@@ -1,10 +1,10 @@
 type FilterPredicate<GivenType> = (item: GivenType, index?: number, list?: GivenType[]) => boolean;
 type MapPredicate<GivenType, ResultType> = (item: GivenType, index?: number, list?: GivenType[]) => ResultType;
 
-type StreamApplyer<GivenType> = (item: GivenType) => void;
+type StreamApplyer<GivenType> = (item: GivenType, index: number) => void;
 
 type StreamOperation<GivenType, ResultType> =
-    (nextOperation: (result: ResultType) => void) => StreamApplyer<GivenType>;
+    (nextOperation: (result: ResultType, index: number) => void) => StreamApplyer<GivenType>;
 
 export class Stream<GivenType, ResultType=GivenType> {
     private readonly list: Array<GivenType>;
@@ -17,10 +17,10 @@ export class Stream<GivenType, ResultType=GivenType> {
 
     public filter(predicate: FilterPredicate<ResultType>): Stream<GivenType, ResultType> {
         const operation: StreamOperation<GivenType, ResultType> = 
-            (nextOperation) => 
-                this.operation((item: ResultType) => {
-                    if (predicate(item)) {
-                        nextOperation(item);
+            (nextOperation): StreamApplyer<GivenType> => 
+                this.operation((item: ResultType, index: number) => {
+                    if (predicate(item, index)) {
+                        nextOperation(item, index);
                     }
                 });
 
@@ -29,9 +29,9 @@ export class Stream<GivenType, ResultType=GivenType> {
 
     public map<NewResultType>(predicate: MapPredicate<ResultType, NewResultType>): Stream<GivenType, NewResultType> {
         const operation: StreamOperation<GivenType, NewResultType> = 
-            (nextOperation) =>
-                this.operation((item: ResultType) => {
-                    nextOperation(predicate(item));
+            (nextOperation): StreamApplyer<GivenType> =>
+                this.operation((item: ResultType, index: number) => {
+                    nextOperation(predicate(item, index), index);
                 });
 
         return new Stream(this.list, operation);
@@ -39,12 +39,17 @@ export class Stream<GivenType, ResultType=GivenType> {
 
     public collect(): Array<ResultType> {
         const newList: Array<ResultType> = [];
-        this.list.forEach((item: GivenType) =>
-            this.operation((newItem: ResultType) => newList.push(newItem))(item));
+        const applyer = this.operation((newItem: ResultType, index: number) => newList.push(newItem));
+
+        for (let index = 0; index < this.list.length; index++) {
+            applyer(this.list[index], index);
+        }
+
         return newList;
     }
 }
 
-export const stream: <GivenType>(list: Array<GivenType>) => Stream<GivenType, GivenType> = 
+export const stream: <GivenType>(list: Array<GivenType>) => Stream<GivenType, GivenType> =
     <GivenType>(list: Array<GivenType>) => 
-        new Stream<GivenType>(list, (nextOperation: StreamApplyer<GivenType>) => (item: GivenType) => nextOperation(item));
+        new Stream<GivenType>(list, (nextOperation: StreamApplyer<GivenType>) =>
+            (item: GivenType, index: number) => nextOperation(item, index));
